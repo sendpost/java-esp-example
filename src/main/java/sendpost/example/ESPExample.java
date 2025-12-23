@@ -96,7 +96,6 @@ public class ESPExample {
             // Create new sub-account request
             NewSubAccount newSubAccount = new NewSubAccount();
             newSubAccount.setName("ESP Client - " + System.currentTimeMillis());
-            newSubAccount.setType(1); // 0 = Regular, 1 = Plus
             
             System.out.println("Creating sub-account: " + newSubAccount.getName());
             
@@ -109,7 +108,7 @@ public class ESPExample {
             System.out.println("  ID: " + createdSubAccountId);
             System.out.println("  Name: " + subAccount.getName());
             System.out.println("  API Key: " + createdSubAccountApiKey);
-            System.out.println("  Type: " + (subAccount.getType() != null && subAccount.getType() == 1 ? "Plus" : "Regular"));
+            System.out.println("  Type: " + (subAccount.getType() != null && subAccount.getType().getValue() != null && subAccount.getType().getValue() == 1 ? "Plus" : "Regular"));
             
         } catch (ApiException e) {
             System.err.println("✗ Failed to create sub-account:");
@@ -141,7 +140,7 @@ public class ESPExample {
                 System.out.println("  - ID: " + subAccount.getId());
                 System.out.println("    Name: " + subAccount.getName());
                 System.out.println("    API Key: " + subAccount.getApiKey());
-                System.out.println("    Type: " + (subAccount.getType() != null && subAccount.getType() == 1 ? "Plus" : "Regular"));
+                System.out.println("    Type: " + (subAccount.getType() != null && subAccount.getType().getValue() != null && subAccount.getType().getValue() == 1 ? "Plus" : "Regular"));
                 System.out.println("    Blocked: " + (subAccount.getBlocked() != null && subAccount.getBlocked() ? "Yes" : "No"));
                 if (subAccount.getCreated() != null) {
                     System.out.println("    Created: " + subAccount.getCreated());
@@ -226,7 +225,7 @@ public class ESPExample {
             WebhookApi webhookApi = new WebhookApi(apiClient);
             
             System.out.println("Retrieving all webhooks...");
-            List<Webhook> webhooks = webhookApi.getAllWebhooks();
+            List<Webhook> webhooks = webhookApi.getAllWebhooks(null, null, null);
             
             System.out.println("✓ Retrieved " + webhooks.size() + " webhook(s)");
             for (Webhook webhook : webhooks) {
@@ -260,23 +259,20 @@ public class ESPExample {
             
             // Create domain request
             CreateDomainRequest domainRequest = new CreateDomainRequest();
-            domainRequest.setDomain(TEST_DOMAIN_NAME);
+            domainRequest.setName(TEST_DOMAIN_NAME);
             
             System.out.println("Adding domain: " + TEST_DOMAIN_NAME);
             
             Domain domain = domainApi.subaccountDomainPost(domainRequest);
-            createdDomainId = domain.getId();
+            createdDomainId = domain.getId() != null ? domain.getId().toString() : null;
             
             System.out.println("✓ Domain added successfully!");
             System.out.println("  ID: " + createdDomainId);
-            System.out.println("  Domain: " + domain.getDomain());
+            System.out.println("  Domain: " + domain.getName());
             System.out.println("  Verified: " + (domain.getVerified() != null && domain.getVerified() ? "Yes" : "No"));
             
             if (domain.getDkim() != null) {
-                System.out.println("  DKIM Record: " + domain.getDkim().getRecord());
-            }
-            if (domain.getSpf() != null) {
-                System.out.println("  SPF Record: " + domain.getSpf().getRecord());
+                System.out.println("  DKIM Record: " + domain.getDkim().getTextValue());
             }
             
             System.out.println("\n⚠️  IMPORTANT: Add the DNS records shown above to your domain's DNS settings to verify the domain.");
@@ -303,12 +299,12 @@ public class ESPExample {
             DomainApi domainApi = new DomainApi(apiClient);
             
             System.out.println("Retrieving all domains...");
-            List<Domain> domains = domainApi.subaccountDomainGet(null, null, null);
+            List<Domain> domains = domainApi.getAllDomains(null, null, null);
             
             System.out.println("✓ Retrieved " + domains.size() + " domain(s)");
             for (Domain domain : domains) {
                 System.out.println("  - ID: " + domain.getId());
-                System.out.println("    Domain: " + domain.getDomain());
+                System.out.println("    Domain: " + domain.getName());
                 System.out.println("    Verified: " + (domain.getVerified() != null && domain.getVerified() ? "Yes" : "No"));
                 System.out.println();
             }
@@ -362,16 +358,20 @@ public class ESPExample {
             emailMessage.setTrackClicks(true);
             
             // Add custom headers for tracking
-            Map<String, String> headers = new HashMap<>();
+            Map<String, String> headers = new HashMap<String, String>();
             headers.put("X-Order-ID", "12345");
             headers.put("X-Email-Type", "transactional");
             emailMessage.setHeaders(headers);
             
             // Add custom fields
-            Map<String, String> customFields = new HashMap<>();
+            Map<String, String> customFields = new HashMap<String, String>();
             customFields.put("customer_id", "67890");
             customFields.put("order_value", "99.99");
-            recipient.setCustomFields(customFields);
+            Map<String, Object> customFieldsObj = new HashMap<String, Object>();
+            for (Map.Entry<String, String> entry : customFields.entrySet()) {
+                customFieldsObj.put(entry.getKey(), entry.getValue());
+            }
+            recipient.setCustomFields(customFieldsObj);
             
             System.out.println("Sending transactional email...");
             System.out.println("  From: " + TEST_FROM_EMAIL);
@@ -456,7 +456,7 @@ public class ESPExample {
             emailMessage.setGroups(groups);
             
             // Add custom headers
-            Map<String, String> headers = new HashMap<>();
+            Map<String, String> headers = new HashMap<String, String>();
             headers.put("X-Email-Type", "marketing");
             headers.put("X-Campaign-ID", "campaign-001");
             emailMessage.setHeaders(headers);
@@ -588,8 +588,6 @@ public class ESPExample {
             
             long totalProcessed = 0;
             long totalDelivered = 0;
-            long totalOpens = 0;
-            long totalClicks = 0;
             
             for (Stat stat : stats) {
                 System.out.println("\n  Date: " + stat.getDate());
@@ -600,27 +598,17 @@ public class ESPExample {
                     System.out.println("    Dropped: " + statData.getDropped());
                     System.out.println("    Hard Bounced: " + statData.getHardBounced());
                     System.out.println("    Soft Bounced: " + statData.getSoftBounced());
-                    System.out.println("    Opens: " + statData.getOpens());
-                    System.out.println("    Clicks: " + statData.getClicks());
                     System.out.println("    Unsubscribed: " + statData.getUnsubscribed());
                     System.out.println("    Spam: " + statData.getSpam());
                     
                     totalProcessed += statData.getProcessed() != null ? statData.getProcessed() : 0;
                     totalDelivered += statData.getDelivered() != null ? statData.getDelivered() : 0;
-                    totalOpens += statData.getOpens() != null ? statData.getOpens() : 0;
-                    totalClicks += statData.getClicks() != null ? statData.getClicks() : 0;
                 }
             }
             
             System.out.println("\n  Summary (Last 7 days):");
             System.out.println("    Total Processed: " + totalProcessed);
             System.out.println("    Total Delivered: " + totalDelivered);
-            System.out.println("    Total Opens: " + totalOpens);
-            System.out.println("    Total Clicks: " + totalClicks);
-            if (totalDelivered > 0) {
-                System.out.println("    Open Rate: " + String.format("%.2f%%", (totalOpens * 100.0 / totalDelivered)));
-                System.out.println("    Click Rate: " + String.format("%.2f%%", (totalClicks * 100.0 / totalDelivered)));
-            }
             
         } catch (ApiException e) {
             System.err.println("✗ Failed to get stats:");
@@ -657,27 +645,17 @@ public class ESPExample {
             System.out.println("  From: " + fromDate);
             System.out.println("  To: " + toDate);
             
-            AggregateStats aggregateStats = statsApi.accountSubaccountStatSubaccountIdAggregateGet(
+            AggregateStat aggregateStat = statsApi.accountSubaccountStatSubaccountIdAggregateGet(
                 fromDate, toDate, createdSubAccountId.longValue());
             
             System.out.println("✓ Aggregate stats retrieved successfully!");
-            System.out.println("  Processed: " + aggregateStats.getProcessed());
-            System.out.println("  Delivered: " + aggregateStats.getDelivered());
-            System.out.println("  Dropped: " + aggregateStats.getDropped());
-            System.out.println("  Hard Bounced: " + aggregateStats.getHardBounced());
-            System.out.println("  Soft Bounced: " + aggregateStats.getSoftBounced());
-            System.out.println("  Opens: " + aggregateStats.getOpens());
-            System.out.println("  Clicks: " + aggregateStats.getClicks());
-            System.out.println("  Unsubscribed: " + aggregateStats.getUnsubscribed());
-            System.out.println("  Spam: " + aggregateStats.getSpam());
-            
-            if (aggregateStats.getDelivered() != null && aggregateStats.getDelivered() > 0) {
-                double openRate = (aggregateStats.getOpens() != null ? aggregateStats.getOpens() : 0) * 100.0 / aggregateStats.getDelivered();
-                double clickRate = (aggregateStats.getClicks() != null ? aggregateStats.getClicks() : 0) * 100.0 / aggregateStats.getDelivered();
-                System.out.println("\n  Performance Metrics:");
-                System.out.println("    Open Rate: " + String.format("%.2f%%", openRate));
-                System.out.println("    Click Rate: " + String.format("%.2f%%", clickRate));
-            }
+            System.out.println("  Processed: " + aggregateStat.getProcessed());
+            System.out.println("  Delivered: " + aggregateStat.getDelivered());
+            System.out.println("  Dropped: " + aggregateStat.getDropped());
+            System.out.println("  Hard Bounced: " + aggregateStat.getHardBounced());
+            System.out.println("  Soft Bounced: " + aggregateStat.getSoftBounced());
+            System.out.println("  Unsubscribed: " + aggregateStat.getUnsubscribed());
+            System.out.println("  Spam: " + aggregateStat.getSpam());
             
         } catch (ApiException e) {
             System.err.println("✗ Failed to get aggregate stats:");
@@ -708,8 +686,9 @@ public class ESPExample {
             for (IP ip : ips) {
                 System.out.println("  - ID: " + ip.getId());
                 System.out.println("    IP Address: " + ip.getPublicIP());
-                System.out.println("    RDNS: " + (ip.getRdns() != null ? ip.getRdns() : "N/A"));
-                System.out.println("    Dedicated: " + (ip.getDedicated() != null && ip.getDedicated() ? "Yes" : "No"));
+                if (ip.getReverseDNSHostname() != null) {
+                    System.out.println("    Reverse DNS: " + ip.getReverseDNSHostname());
+                }
                 if (ip.getCreated() != null) {
                     System.out.println("    Created: " + ip.getCreated());
                 }
@@ -752,11 +731,13 @@ public class ESPExample {
             poolRequest.setName("Marketing Pool - " + System.currentTimeMillis());
             poolRequest.setRoutingStrategy(0); // 0 = RoundRobin, 1 = EmailProviderStrategy
             
-            // Add IPs to the pool
-            List<IP> poolIPs = new ArrayList<>();
+            // Add IPs to the pool (convert IP to EIP)
+            List<EIP> poolIPs = new ArrayList<>();
             // Add first available IP (you can add more)
             if (!ips.isEmpty()) {
-                poolIPs.add(ips.get(0));
+                EIP eip = new EIP();
+                eip.setPublicIP(ips.get(0).getPublicIP());
+                poolIPs.add(eip);
             }
             poolRequest.setIps(poolIPs);
             
@@ -858,7 +839,7 @@ public class ESPExample {
                     System.out.println("    Opens: " + statData.getOpens());
                     System.out.println("    Clicks: " + statData.getClicks());
                     System.out.println("    Unsubscribed: " + statData.getUnsubscribed());
-                    System.out.println("    Spam: " + statData.getSpam());
+                    System.out.println("    Spams: " + statData.getSpams());
                 }
             }
             
