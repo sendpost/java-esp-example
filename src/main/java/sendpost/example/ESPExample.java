@@ -47,8 +47,8 @@ public class ESPExample {
         : "YOUR_ACCOUNT_API_KEY_HERE";
     
     // Configuration - Update these with your values
-    private static final String TEST_FROM_EMAIL = "sender@yourdomain.com";
-    private static final String TEST_TO_EMAIL = "recipient@example.com";
+    private static final String TEST_FROM_EMAIL = "from@yourdomain.com";
+    private static final String TEST_TO_EMAIL = "to@example.com";
     private static final String TEST_DOMAIN_NAME = "yourdomain.com";
     private static final String WEBHOOK_URL = "https://your-webhook-endpoint.com/webhook";
     
@@ -58,6 +58,7 @@ public class ESPExample {
     private Integer createdWebhookId = null;
     private String createdDomainId = null;
     private Integer createdIPPoolId = null;
+    private String createdIPPoolName = null;
     private String sentMessageId = null;
     
     public ESPExample() {
@@ -94,12 +95,12 @@ public class ESPExample {
             SubAccountApi subAccountApi = new SubAccountApi(apiClient);
             
             // Create new sub-account request
-            NewSubAccount newSubAccount = new NewSubAccount();
-            newSubAccount.setName("ESP Client - " + System.currentTimeMillis());
+            CreateSubAccountRequest createSubAccountRequest = new CreateSubAccountRequest();
+            createSubAccountRequest.setName("ESP Client - " + System.currentTimeMillis());
             
-            System.out.println("Creating sub-account: " + newSubAccount.getName());
+            System.out.println("Creating sub-account: " + createSubAccountRequest.getName());
             
-            SubAccount subAccount = subAccountApi.createSubAccount(newSubAccount);
+            SubAccount subAccount = subAccountApi.createSubAccount(createSubAccountRequest);
             
             createdSubAccountId = subAccount.getId();
             createdSubAccountApiKey = subAccount.getApiKey();
@@ -177,25 +178,25 @@ public class ESPExample {
             WebhookApi webhookApi = new WebhookApi(apiClient);
             
             // Create new webhook
-            NewWebhook newWebhook = new NewWebhook();
-            newWebhook.setUrl(WEBHOOK_URL);
-            newWebhook.setEnabled(true);
+            CreateWebhookRequest createWebhookRequest = new CreateWebhookRequest();
+            createWebhookRequest.setUrl(WEBHOOK_URL);
+            createWebhookRequest.setEnabled(true);
             
             // Configure which events to receive
-            newWebhook.setProcessed(true);      // Email processed
-            newWebhook.setDelivered(true);       // Email delivered
-            newWebhook.setDropped(true);        // Email dropped
-            newWebhook.setSoftBounced(true);    // Soft bounce
-            newWebhook.setHardBounced(true);     // Hard bounce
-            newWebhook.setOpened(true);          // Email opened
-            newWebhook.setClicked(true);         // Link clicked
-            newWebhook.setUnsubscribed(true);    // Unsubscribed
-            newWebhook.setSpam(true);            // Marked as spam
+            createWebhookRequest.setProcessed(true);      // Email processed
+            createWebhookRequest.setDelivered(true);       // Email delivered
+            createWebhookRequest.setDropped(true);        // Email dropped
+            createWebhookRequest.setSoftBounced(true);    // Soft bounce
+            createWebhookRequest.setHardBounced(true);     // Hard bounce
+            createWebhookRequest.setOpened(true);          // Email opened
+            createWebhookRequest.setClicked(true);         // Link clicked
+            createWebhookRequest.setUnsubscribed(true);    // Unsubscribed
+            createWebhookRequest.setSpam(true);            // Marked as spam
             
             System.out.println("Creating webhook...");
-            System.out.println("  URL: " + newWebhook.getUrl());
+            System.out.println("  URL: " + createWebhookRequest.getUrl());
             
-            Webhook webhook = webhookApi.createWebhook(newWebhook);
+            Webhook webhook = webhookApi.createWebhook(createWebhookRequest);
             createdWebhookId = webhook.getId();
             
             System.out.println("✓ Webhook created successfully!");
@@ -363,6 +364,12 @@ public class ESPExample {
             headers.put("X-Email-Type", "transactional");
             emailMessage.setHeaders(headers);
             
+            // Use IP pool if available
+            if (createdIPPoolName != null && !createdIPPoolName.isEmpty()) {
+                emailMessage.setIppool(createdIPPoolName);
+                System.out.println("  Using IP Pool: " + createdIPPoolName);
+            }
+            
             // Add custom fields
             Map<String, String> customFields = new HashMap<String, String>();
             customFields.put("customer_id", "67890");
@@ -460,6 +467,12 @@ public class ESPExample {
             headers.put("X-Email-Type", "marketing");
             headers.put("X-Campaign-ID", "campaign-001");
             emailMessage.setHeaders(headers);
+            
+            // Use IP pool if available
+            if (createdIPPoolName != null && !createdIPPoolName.isEmpty()) {
+                emailMessage.setIppool(createdIPPoolName);
+                System.out.println("  Using IP Pool: " + createdIPPoolName);
+            }
             
             System.out.println("Sending marketing email...");
             System.out.println("  From: " + TEST_FROM_EMAIL);
@@ -591,8 +604,8 @@ public class ESPExample {
             
             for (Stat stat : stats) {
                 System.out.println("\n  Date: " + stat.getDate());
-                if (stat.getStats() != null) {
-                    StatStats statData = stat.getStats();
+                if (stat.getStat() != null) {
+                    StatStat statData = stat.getStat();
                     System.out.println("    Processed: " + statData.getProcessed());
                     System.out.println("    Delivered: " + statData.getDelivered());
                     System.out.println("    Dropped: " + statData.getDropped());
@@ -728,7 +741,7 @@ public class ESPExample {
             
             // Create IP pool request
             IPPoolCreateRequest poolRequest = new IPPoolCreateRequest();
-            poolRequest.setName("Marketing Pool - " + System.currentTimeMillis());
+            poolRequest.setName("Marketing Pool " + System.currentTimeMillis());
             poolRequest.setRoutingStrategy(0); // 0 = RoundRobin, 1 = EmailProviderStrategy
             
             // Add IPs to the pool (convert IP to EIP)
@@ -741,12 +754,22 @@ public class ESPExample {
             }
             poolRequest.setIps(poolIPs);
             
+            // Set warmup interval (required, must be > 0)
+            poolRequest.setWarmupInterval(24); // 24 hours
+            
+            // Set overflow strategy (0 = None, 1 = Use overflow pool)
+            poolRequest.setOverflowStrategy(0);
+            
             System.out.println("Creating IP pool: " + poolRequest.getName());
             System.out.println("  Routing Strategy: Round Robin");
             System.out.println("  IPs: " + poolIPs.size());
+            System.out.println("  Warmup Interval: " + poolRequest.getWarmupInterval() + " hours");
             
             IPPool ipPool = ipPoolsApi.createIPPool(poolRequest);
             createdIPPoolId = ipPool.getId();
+            if (ipPool.getName() != null) {
+                createdIPPoolName = ipPool.getName();
+            }
             
             System.out.println("✓ IP pool created successfully!");
             System.out.println("  ID: " + createdIPPoolId);
@@ -836,10 +859,10 @@ public class ESPExample {
                     System.out.println("    Dropped: " + statData.getDropped());
                     System.out.println("    Hard Bounced: " + statData.getHardBounced());
                     System.out.println("    Soft Bounced: " + statData.getSoftBounced());
-                    System.out.println("    Opens: " + statData.getOpens());
-                    System.out.println("    Clicks: " + statData.getClicks());
+                    System.out.println("    Opens: " + statData.getOpened());
+                    System.out.println("    Clicks: " + statData.getClicked());
                     System.out.println("    Unsubscribed: " + statData.getUnsubscribed());
-                    System.out.println("    Spams: " + statData.getSpams());
+                    System.out.println("    Spams: " + statData.getSpam());
                 }
             }
             
@@ -873,24 +896,31 @@ public class ESPExample {
         addDomain();
         listDomains();
         
-        // Step 4: Send emails
+        // Step 4: Manage IPs and IP pools (before sending emails)
+        listIPs();
+        createIPPool();
+        listIPPools();
+        
+        // Step 5: Send emails (using the created IP pool)
         sendTransactionalEmail();
         sendMarketingEmail();
-        
-        // Step 5: Retrieve message details
-        getMessageDetails();
         
         // Step 6: Monitor statistics
         getSubAccountStats();
         getAggregateStats();
         
-        // Step 7: Manage IPs and IP pools
-        listIPs();
-        createIPPool();
-        listIPPools();
-        
-        // Step 8: Get account-level overview
+        // Step 7: Get account-level overview
         getAccountStats();
+        
+        // Step 8: Retrieve message details (at the end to give system time to store data)
+        // Add a small delay to ensure message data is stored
+        System.out.println("\n⏳ Waiting a few seconds for message data to be stored...");
+        try {
+            Thread.sleep(3000); // Wait 3 seconds
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        getMessageDetails();
         
         System.out.println("\n╔═══════════════════════════════════════════════════════════════╗");
         System.out.println("║   Workflow Complete!                                          ║");
